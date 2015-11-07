@@ -13,13 +13,17 @@ class SocketParserTest: XCTestCase {
     //Format key: message; namespace-data-binary-id
     static let packetTypes: Dictionary<String, (String, [AnyObject], [NSData], Int)> = [
         "0": ("/", [], [], -1), "1": ("/", [], [], -1),
+        "25[\"test\"]": ("/", ["test"], [], 5),
+        "2[\"test\",\"~~0\"]": ("/", ["test", "~~0"], [], -1),
         "2/swift,[\"testArrayEmitReturn\",[\"test3\",\"test4\"]]": ("/swift", ["testArrayEmitReturn", ["test3", "test4"]], [], -1),
         "51-/swift,[\"testMultipleItemsWithBufferEmitReturn\",[1,2],{\"test\":\"bob\"},25,\"polo\",{\"_placeholder\":true,\"num\":0}]": ("/swift", ["testMultipleItemsWithBufferEmitReturn", [1, 2], ["test": "bob"], 25, "polo", "~~0"], [], -1),
         "3/swift,0[[\"test3\",\"test4\"]]": ("/swift", [["test3", "test4"]], [], 0),
         "61-/swift,19[[1,2],{\"test\":\"bob\"},25,\"polo\",{\"_placeholder\":true,\"num\":0}]": ("/swift", [ [1, 2], ["test": "bob"], 25, "polo", "~~0"], [], 19),
         "4/swift,": ("/swift", [], [], -1),
         "0/swift": ("/swift", [], [], -1),
-        "1/swift": ("/swift", [], [], -1)]
+        "1/swift": ("/swift", [], [], -1),
+        "4\"ERROR\"": ("/", ["ERROR"], [], -1),
+        "41": ("/", [1], [], -1)]
     
     func testDisconnect() {
         let message = "1"
@@ -38,6 +42,16 @@ class SocketParserTest: XCTestCase {
     
     func testConnecttNameSpace() {
         let message = "0/swift"
+        validateParseResult(message)
+    }
+    
+    func testIdEvent() {
+        let message = "25[\"test\"]"
+        validateParseResult(message)
+    }
+    
+    func testBinaryPlaceholderAsString() {
+        let message = "2[\"test\",\"~~0\"]"
         validateParseResult(message)
     }
     
@@ -66,9 +80,24 @@ class SocketParserTest: XCTestCase {
         validateParseResult(message)
     }
     
+    func testErrorTypeString() {
+        let message = "4\"ERROR\""
+        validateParseResult(message)
+    }
+    
+    func testErrorTypeInt() {
+        let message = "41"
+        validateParseResult(message)
+    }
+    
     func testInvalidInput() {
         let message = "8"
-        XCTAssertNil(SocketParser.parseString(message))
+        switch SocketParser.parseString(message) {
+        case .Left(_):
+            return
+        case .Right(_):
+            XCTFail("Created packet when shouldn't have")
+        }
     }
     
     func testGenericParser() {
@@ -83,8 +112,8 @@ class SocketParserTest: XCTestCase {
         let validValues = SocketParserTest.packetTypes[message]!
         let packet = SocketParser.parseString(message)
         let type = message.substringWithRange(Range<String.Index>(start: message.startIndex, end: message.startIndex.advancedBy(1)))
-        if let packet = packet {
-            XCTAssertEqual(packet.type, SocketPacket.PacketType(str:type)!)
+        if case let .Right(packet) = packet {
+            XCTAssertEqual(packet.type, SocketPacket.PacketType(rawValue: Int(type) ?? -1)!)
             XCTAssertEqual(packet.nsp, validValues.0)
             XCTAssertTrue((packet.data as NSArray).isEqualToArray(validValues.1))
             XCTAssertTrue((packet.binary as NSArray).isEqualToArray(validValues.2))
